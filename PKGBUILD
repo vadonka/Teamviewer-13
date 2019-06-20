@@ -1,33 +1,71 @@
-# Maintainer: liberodark
-
 pkgname=teamviewer13
+pkgver=13.2.75536
+pkgrel=1
 pkgdesc='All-In-One Software for Remote Support and Online Meetings'
-pkgver='13.2.75536'
-pkgrel='2'
-arch=('x86_64')
+arch=('i686' 'x86_64' 'armv7h')
 url='http://www.teamviewer.com'
 license=('custom')
 options=('!strip')
 provides=('teamviewer')
-conflicts=('teamviewer' 'teamviewer-beta' 'teamviewer12' 'teamviewer11' 'teamviewer10' 'teamviewer9' 'teamviewer8')
-depends=('hicolor-icon-theme'
-         'qt5-quickcontrols'
-         'qt5-webkit'
-         'qt5-x11extras')
+conflicts=('teamviewer-beta')
+# /opt/teamviewer/tv_bin/script/teamviewer_setup checklibs can check deps for each TV component:
+# TV_DMN, TV_DESK, TV_GUI
+depends=(
+	'hicolor-icon-theme'
+	'qt5-webkit'
+	'qt5-x11extras'
+	'qt5-quickcontrols' # Doesn't appear in namcap, won't display UI without it.
+)
+#depends_x86_64=(
+# libdepends:
+#	'lib32-libxtst'
+#	'lib32-libxinerama'
+#	'lib32-libxrandr'
+#	'lib32-libxdamage'
+#	'lib32-fontconfig'
+#	'lib32-libsm')
+#depends_i686=()
+#depends_armv7h=()
+install=teamviewer.install
+source_x86_64=("https://dl.tvcdn.de/download/linux/version_${pkgver%%.*}x/teamviewer_${pkgver}_amd64.deb")
+source_i686=("https://dl.tvcdn.de/download/linux/version_${pkgver%%.*}x/teamviewer_${pkgver}_i386.deb")
+source_armv7h=("https://dl.tvcdn.de/download/linux/version_${pkgver%%.*}x/teamviewer-host_${pkgver}_armhf.deb")
+#source_armv7h=("https://dl.tvcdn.de/download/linux/version_${pkgver%%.*}x/teamviewer-host_13.2.13582_armhf.deb")
+sha256sums_i686=('7d81259170c9b0dfc824951499f8682124c28dac1313cce3afccd6d68354f1c0')
+sha256sums_x86_64=('e81f4abe795e2cf01acdef5cbd741fe7a6f0b5d1c9b8bfc5793bfaa4fdfcb645')
+sha256sums_armv7h=('eaa41d7cac8dfec98ed68a60672d5447dd56518dc8fbe73ce37a22d294378e00')
 
-source_x86_64=("https://download.teamviewer.com/download/linux/version_${pkgver%%.*}x/teamviewer-host_amd64.deb")
-source=($pkgname.desktop
-        $pkgname.png)
-
-sha512sums=('0145af7977bb673957d7066ae9c9faf3791b854a3f689eef9f31e144ab2f19b4c02e2599ab6acf3d0c1b08a5f15b34522640ed1d818791c6a8a3251db1e796f9'
-            '1222cbb98505294adbbf1bfb59abcd0e645aa3eeae50f658a32355ed3b3ee087cea64a31163df5ca18119aca613526fc80e7f1f50d0c77ceda88d86e6811447c')
-sha512sums_x86_64=('33610874418c37c61d4847ce39ed9d83ff3a49b57c7ca12fa2f8a6eefd3e21bcf4e40175d00b57c48472b50d69b2a2af50d776b924b85bc1b2b058cf74e377d4')
-
+prepare() {
+	warning "If the install fails, you need to uninstall previous major version of Teamviewer"
+	[ -d data ] && rm -rf data
+	mkdir data
+	cd data
+	for datatar in ../data.tar.*; do
+		msg2 "Unpacking $datatar"
+		tar -xf $datatar
+	done
+	sed -i '/function CheckQtQuickControls()/{N;a ls /usr/lib/qt/qml/QtQuick/Controls/qmldir &>/dev/null && return # ArchLinux
+}' ./opt/teamviewer/tv_bin/script/teamviewer_setup || msg2 "Patching CheckQtQuickControls failed! Contact maintainer"
+	msg2 "Running teamviewer_setup checklibs"
+	./opt/teamviewer/tv_bin/script/teamviewer_setup checklibs \
+    || msg2 "teamviewer_setup checklibs failed, contact maintainer with /tmp/teamviewerTARLibCheck/DependencyCheck.log" # Currently it always exits 0
+}
 
 package() {
-  cd $srcdir
-  tar xvf data.tar.xz
-  cp -r opt $pkgdir
-  install -vDm644 $srcdir/$pkgname.desktop $pkgdir/usr/share/applications/$pkgname.desktop
-  install -vDm644 $srcdir/$pkgname.png $pkgdir/usr/share/pixmaps/$pkgname.png
+	# Install
+	warning "If the install fails, you need to uninstall previous major version of Teamviewer"
+	cp -dr --no-preserve=ownership ./data/{etc,opt,usr,var} "${pkgdir}"/
+
+	# Additional files
+	rm "${pkgdir}"/opt/teamviewer/tv_bin/xdg-utils/xdg-email
+	rm -rf "${pkgdir}"/etc/apt
+	install -D -m0644 "${pkgdir}"/opt/teamviewer/tv_bin/script/teamviewerd.service \
+		"${pkgdir}"/usr/lib/systemd/system/teamviewerd.service
+	install -d -m0755 "${pkgdir}"/usr/{share/applications,share/licenses/teamviewer}
+	ln -s /opt/teamviewer/License.txt \
+		"${pkgdir}"/usr/share/licenses/teamviewer/LICENSE
+	if [ "$CARCH" = "x86_64" ] && [ -f "${pkgdir}/opt/teamviewer/tv_bin/script/libdepend" ]; then
+		msg2 "Removing libdepend to ditch lib32 dependencies"
+		rm "${pkgdir}/opt/teamviewer/tv_bin/script/libdepend"
+	fi
 }
